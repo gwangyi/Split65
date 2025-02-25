@@ -1,4 +1,4 @@
-// Copyright 2024 yangzheng20003 (@yangzheng20003)
+// Copyright 2025 EPOMAKER (@yEpomaker)
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifdef ENABLE_RGB_MATRIX_RGBR_PLAY
