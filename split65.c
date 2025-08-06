@@ -255,7 +255,7 @@ bool lpwr_is_allow_timeout_hook(void) {
         return false;
     }
 
-    return true;
+    return false;  // TODO: figure out why sleep/wakeup doesn't working
 }
 
 void wireless_post_task(void) {
