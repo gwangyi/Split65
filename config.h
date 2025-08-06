@@ -1,4 +1,4 @@
-// Copyright 2025 EPOMAKER (@Epomaker) 
+// Copyright 2025 EPOMAKER (@Epomaker)
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
@@ -80,7 +80,7 @@
 
 /* Flash */
 #define EXTERNAL_FLASH_SPI_SLAVE_SELECT_PIN C12
-#define WEAR_LEVELING_BACKING_SIZE (8 * 1024)   
+#define WEAR_LEVELING_BACKING_SIZE (8 * 1024)
 #define WEAR_LEVELING_LOGICAL_SIZE (WEAR_LEVELING_BACKING_SIZE / 2)
 #define FEE_PAGE_COUNT (WEAR_LEVELING_BACKING_SIZE / FEE_PAGE_SIZE)
 
@@ -91,6 +91,7 @@
 /* WS2812 */
 #define WS2812_SPI_DRIVER  SPIDM2
 #define WS2812_SPI_DIVISOR 32
+#define WS2812_BYTE_ORDER WS2812_BYTE_ORDER_RGB
 
 /* rgb_record */
 #define ENABLE_RGB_MATRIX_RGBR_PLAY
