@@ -407,7 +407,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             }
             break;
         }
-        
+
         case RGB_MOD:
             break;
         default: {
@@ -518,7 +518,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
             if (record->event.pressed) {
                 register_code(KC_LCTL);
                 register_code(KC_Z);
-            } 
+            }
             else{
                 unregister_code(KC_LCTL);
                 unregister_code(KC_Z);
@@ -528,7 +528,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
             if (record->event.pressed) {
                 register_code(KC_LCTL);
                 register_code(KC_X);
-            } 
+            }
             else{
                 unregister_code(KC_LCTL);
                 unregister_code(KC_X);
@@ -538,7 +538,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
             if (record->event.pressed) {
                 register_code(KC_LCTL);
                 register_code(KC_C);
-            } 
+            }
             else{
                 unregister_code(KC_LCTL);
                 unregister_code(KC_C);
@@ -548,7 +548,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
             if (record->event.pressed) {
                 register_code(KC_LCTL);
                 register_code(KC_V);
-            } 
+            }
             else{
                 unregister_code(KC_LCTL);
                 unregister_code(KC_V);
@@ -583,7 +583,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     case KC_F3:{
         if(confinfo.filp){
             if (keymap_is_mac_system()) {
-                
+
                 if (record->event.pressed) {
                     register_code16(KC_VOLU);
                 } else {
@@ -649,7 +649,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     case KC_F8:{
        if(confinfo.filp){
             if (keymap_is_mac_system()) {
-        
+
                 if (record->event.pressed) {
                     register_code16(KC_MNXT);
                 } else {
@@ -663,7 +663,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     case KC_F9:{
         if(confinfo.filp){
             if (keymap_is_mac_system()) {
-            
+
                 if (record->event.pressed) {
                     register_code16(KC_MAIL);
                 } else {
@@ -677,7 +677,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     case KC_F10:{
         if(confinfo.filp){
             if (keymap_is_mac_system()) {
-               
+
                 if (record->event.pressed) {
                     register_code16(KC_WHOM);
                 } else {
@@ -691,7 +691,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     case KC_F11:{
         if(confinfo.filp){
             if (keymap_is_mac_system()) {
-                
+
                 if (record->event.pressed) {
                     register_code16(KC_CALC);
                 } else {
@@ -705,7 +705,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     case KC_F12:{
         if(confinfo.filp){
             if (keymap_is_mac_system()) {
-            
+
                 if (record->event.pressed) {
                     register_code16(KC_WSCH);
                 } else {
@@ -822,7 +822,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
                     if (record->event.pressed) {
                         rgb_matrix_decrease_val();
                     }
-                    
+
                 }
                 return false;
             }
@@ -988,12 +988,12 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
         } break;
         case KC_BATQ:{
             if (record->event.pressed) {
-            
+
                 im_bat_req_charging_flag =  true;
                 }
             else{
                 im_bat_req_charging_flag =  false;
-            
+
             }
         }break;
         case QK_BOOT: {
@@ -1071,7 +1071,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
                 }
             }
         } break;
-        
+
         case TO(_BL): {
             if (record->event.pressed) {
                 rgb_matrix_hs_set_remain_time(HS_RGB_BLINK_INDEX_MAC, 0);
@@ -1096,7 +1096,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 
             return false;
         } break;
-    
+
         case RGB_MOD: {
             if(record->event.pressed){
                 uint8_t mode = rgb_matrix_get_mode();
@@ -1488,7 +1488,7 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
 
     if (host_keyboard_led_state().caps_lock)
         rgb_matrix_set_color(HS_RGB_INDEX_CAPS, 0x20, 0x20, 0x20);
-        
+
     if (!keymap_is_mac_system() && keymap_config.no_gui)
         rgb_matrix_set_color(HS_RGB_INDEX_WIN_LOCK, 0x20, 0x20, 0x20);
 
