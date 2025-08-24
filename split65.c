@@ -518,46 +518,6 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     }
 #endif
     switch (keycode) {
-        case MOR_1: {
-            if (record->event.pressed) {
-                register_code(KC_LCTL);
-                register_code(KC_Z);
-            }
-            else{
-                unregister_code(KC_LCTL);
-                unregister_code(KC_Z);
-            }
-        } break;
-     case MOR_2: {
-            if (record->event.pressed) {
-                register_code(KC_LCTL);
-                register_code(KC_X);
-            }
-            else{
-                unregister_code(KC_LCTL);
-                unregister_code(KC_X);
-            }
-        } break;
-     case MOR_3: {
-            if (record->event.pressed) {
-                register_code(KC_LCTL);
-                register_code(KC_C);
-            }
-            else{
-                unregister_code(KC_LCTL);
-                unregister_code(KC_C);
-            }
-        } break;
-     case MOR_4: {
-            if (record->event.pressed) {
-                register_code(KC_LCTL);
-                register_code(KC_V);
-            }
-            else{
-                unregister_code(KC_LCTL);
-                unregister_code(KC_V);
-            }
-        } break;
         case KC_F1:{
         if(confinfo.filp){
             if (keymap_is_mac_system()) {
