@@ -9,8 +9,11 @@
 #    include "uart.h"
 #endif
 
-static ioline_t row_pins[MATRIX_ROWS] = MATRIX_ROW_PINS;
-static ioline_t col_pins[MATRIX_COLS] = MATRIX_COL_PINS;
+/*
+ * Removed [MATRIX_ROWS] and [MATRIX_COLS] to fix sleep mode
+ */
+static ioline_t row_pins[] = MATRIX_ROW_PINS;
+static ioline_t col_pins[] = MATRIX_COL_PINS;
 
 #if PAL_USE_CALLBACKS != TRUE
 #    error PAL_USE_CALLBACKS must be set to TRUE!
@@ -200,8 +203,12 @@ void wb32_stop_mode(void) {
     EXTI->PR = 0x7FFFF;
     for (uint8_t i = 0; i < 8; i++) {
         for (uint8_t j = 0; j < 32; j++) {
-            if (NVIC->ISPR[i] & (0x01UL < j)) {
-                NVIC->ICPR[i] = (0x01UL < j);
+            /*
+             * Recommended by AI to prevent instant/false wakeups
+             */
+            uint32_t mask = (0x01UL << j);
+            if (NVIC->ISPR[i] & mask) {
+                NVIC->ICPR[i] = mask; /* Properly clear pending IRQ */
             }
         }
     }
