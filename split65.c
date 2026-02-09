@@ -412,7 +412,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             break;
         }
 
-        case RGB_MOD:
+        case UG_NEXT:
             break;
         default: {
             if (rgbrec_is_started()) {
@@ -997,21 +997,21 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 
             return false;
         } break;
-        case RGB_SPI: {
+        case UG_SPDU: {
             if (record->event.pressed) {
                 if (rgb_matrix_get_speed() >= 215) {
                     rgb_blink_dir();
                 }
             }
         } break;
-        case RGB_SPD: {
+        case UG_SPDD: {
             if (record->event.pressed) {
                 if (rgb_matrix_get_speed() <= 95) {
                     rgb_blink_dir();
                 }
             }
         } break;
-        case RGB_VAI: {
+        case UG_VALU: {
             if (record->event.pressed) {
                 rgb_matrix_enable();
                 gpio_write_pin_high(LED_POWER_EN_PIN);
@@ -1021,7 +1021,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
                 }
             }
         } break;
-        case RGB_VAD: {
+        case UG_VALD: {
             if (record->event.pressed) {
                 if (rgb_matrix_get_val() <= RGB_MATRIX_VAL_STEP) {
                     gpio_write_pin_low(LED_POWER_EN_PIN);
@@ -1061,7 +1061,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
             return false;
         } break;
 
-        case RGB_MOD: {
+        case UG_NEXT: {
             if(record->event.pressed){
                 uint8_t mode = rgb_matrix_get_mode();
                 if(mode == 29){
