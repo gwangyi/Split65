@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include QMK_KEYBOARD_H
+#include "keymap_introspection.h"
 #include "rgb_record/rgb_record.h"
 #include "quantum.h"
 #include "serial_usart.h"
@@ -56,6 +57,69 @@ void rgb_matrix_hs_set_remain_time(uint8_t index, uint8_t remain_time);
 
 #define keymap_is_mac_system() ((get_highest_layer(default_layer_state) == _MBL) || (get_highest_layer(default_layer_state) == _MFL))
 #define keymap_is_base_layer() ((get_highest_layer(default_layer_state) == _BL) || (get_highest_layer(default_layer_state) == _FL))
+
+#ifdef RGB_MATRIX_ENABLE
+/*
+ * Find the RGB Matrix LED index for the key mapped to target_keycode,
+ * searching layers from current_layer upward first, then lower layers.
+ */
+static uint8_t find_keycode_led_index(uint8_t current_layer, uint16_t target_keycode, uint8_t fallback_index) {
+    uint8_t layers = keymap_layer_count();
+    if (current_layer >= layers) {
+        current_layer = 0;
+    }
+
+    for (uint8_t offset = 0; offset < layers; offset++) {
+        uint8_t layer = (current_layer + offset) % layers;
+        for (uint8_t r = 0; r < MATRIX_ROWS; r++) {
+            for (uint8_t c = 0; c < MATRIX_COLS; c++) {
+                if (keymap_key_to_keycode(layer, (keypos_t){.row = r, .col = c}) == target_keycode) {
+                    uint8_t led = g_led_config.matrix_co[r][c];
+                    if (led != NO_LED) {
+                        return led;
+                    }
+                }
+            }
+        }
+    }
+
+    return fallback_index;
+}
+
+typedef struct {
+    bool    valid;
+    uint8_t layer;
+    uint8_t filp;
+    uint8_t win_lock;
+    uint8_t caps;
+    uint8_t bat;
+} indicator_led_cache_t;
+
+static indicator_led_cache_t indicator_led_cache = {0};
+
+/* Return cached LED indices for per-frame indicators, refreshing on layer/keymap change. */
+static const indicator_led_cache_t *get_indicator_led_cache(void) {
+    uint8_t current_layer = get_highest_layer(layer_state | default_layer_state);
+    if (!indicator_led_cache.valid || indicator_led_cache.layer != current_layer) {
+        indicator_led_cache.layer    = current_layer;
+        indicator_led_cache.filp     = find_keycode_led_index(current_layer, KC_FILP, 32);
+        indicator_led_cache.win_lock = find_keycode_led_index(current_layer, GU_TOGG, HS_RGB_INDEX_WIN_LOCK);
+        indicator_led_cache.caps     = find_keycode_led_index(current_layer, KC_CAPS, HS_RGB_INDEX_CAPS);
+        indicator_led_cache.bat      = find_keycode_led_index(current_layer, KC_BATQ, HS_MATRIX_BLINK_INDEX_BAT);
+        indicator_led_cache.valid    = true;
+    }
+    return &indicator_led_cache;
+}
+
+#    ifdef VIA_ENABLE
+bool via_command_kb(uint8_t *data, uint8_t length) {
+    (void)data;
+    (void)length;
+    indicator_led_cache.valid = false;
+    return false;
+}
+#    endif
+#endif
 
 uint32_t post_init_timer     = 0x00;
 bool inqbat_flag             = false;
@@ -1038,8 +1102,13 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 
         case TO(_BL): {
             if (record->event.pressed) {
-                rgb_matrix_hs_set_remain_time(HS_RGB_BLINK_INDEX_MAC, 0);
-                rgb_matrix_hs_indicator_set(HS_RGB_BLINK_INDEX_WIN, (RGB){RGB_WHITE}, 250, 3);
+#ifdef RGB_MATRIX_ENABLE
+                uint8_t current_layer = get_highest_layer(layer_state | default_layer_state);
+                uint8_t win_led       = find_keycode_led_index(current_layer, TO(_BL), HS_RGB_BLINK_INDEX_WIN);
+                uint8_t mac_led       = find_keycode_led_index(current_layer, TO(_MBL), HS_RGB_BLINK_INDEX_MAC);
+                rgb_matrix_hs_set_remain_time(mac_led, 0);
+                rgb_matrix_hs_indicator_set(win_led, (RGB){RGB_WHITE}, 250, 3);
+#endif
                 if (keymap_is_mac_system()) {
                     set_single_persistent_default_layer(_BL);
                     layer_move(0);
@@ -1050,8 +1119,13 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
         } break;
         case TO(_MBL): {
             if (record->event.pressed) {
-                rgb_matrix_hs_set_remain_time(HS_RGB_BLINK_INDEX_WIN, 0);
-                rgb_matrix_hs_indicator_set(HS_RGB_BLINK_INDEX_MAC, (RGB){RGB_WHITE}, 250, 3);
+#ifdef RGB_MATRIX_ENABLE
+                uint8_t current_layer = get_highest_layer(layer_state | default_layer_state);
+                uint8_t win_led       = find_keycode_led_index(current_layer, TO(_BL), HS_RGB_BLINK_INDEX_WIN);
+                uint8_t mac_led       = find_keycode_led_index(current_layer, TO(_MBL), HS_RGB_BLINK_INDEX_MAC);
+                rgb_matrix_hs_set_remain_time(win_led, 0);
+                rgb_matrix_hs_indicator_set(mac_led, (RGB){RGB_WHITE}, 250, 3);
+#endif
                 if (!keymap_is_mac_system()) {
                     set_single_persistent_default_layer(_MBL);
                     layer_move(0);
@@ -1181,48 +1255,35 @@ void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) {
         eeconfig_confinfo_update(confinfo.raw);
     }
 
+    uint8_t  current_layer = get_highest_layer(layer_state | default_layer_state);
+    uint32_t interval      = reset ? 200 : 500;
+
     switch (new_devs) {
         case DEVS_BT1: {
-            if (reset) {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_BT1, (RGB){HS_LBACK_COLOR_BT1}, 200, 1);
-            } else {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_BT1, (RGB){HS_PAIR_COLOR_BT1}, 500, 1);
-            }
+            uint8_t index = find_keycode_led_index(current_layer, KC_BT1, HS_RGB_BLINK_INDEX_BT1);
+            RGB     color = reset ? (RGB){HS_LBACK_COLOR_BT1} : (RGB){HS_PAIR_COLOR_BT1};
+            rgb_matrix_wls_indicator_set(index, color, interval, 1);
         } break;
         case DEVS_BT2: {
-            if (reset) {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_BT2, (RGB){HS_LBACK_COLOR_BT2}, 200, 1);
-            } else {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_BT2, (RGB){HS_PAIR_COLOR_BT2}, 500, 1);
-            }
+            uint8_t index = find_keycode_led_index(current_layer, KC_BT2, HS_RGB_BLINK_INDEX_BT2);
+            RGB     color = reset ? (RGB){HS_LBACK_COLOR_BT2} : (RGB){HS_PAIR_COLOR_BT2};
+            rgb_matrix_wls_indicator_set(index, color, interval, 1);
         } break;
         case DEVS_BT3: {
-            if (reset) {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_BT3, (RGB){HS_LBACK_COLOR_BT3}, 200, 1);
-            } else {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_BT3, (RGB){HS_PAIR_COLOR_BT3}, 500, 1);
-            }
+            uint8_t index = find_keycode_led_index(current_layer, KC_BT3, HS_RGB_BLINK_INDEX_BT3);
+            RGB     color = reset ? (RGB){HS_LBACK_COLOR_BT3} : (RGB){HS_PAIR_COLOR_BT3};
+            rgb_matrix_wls_indicator_set(index, color, interval, 1);
         } break;
         case DEVS_BT4: {
-            if (reset) {
-                rgb_matrix_wls_indicator_set(41, (RGB){RGB_BLUE}, 200, 1);
-            } else {
-                rgb_matrix_wls_indicator_set(41, (RGB){RGB_BLUE}, 500, 1);
-            }
+            rgb_matrix_wls_indicator_set(41, (RGB){RGB_BLUE}, interval, 1);
         } break;
         case DEVS_BT5: {
-            if (reset) {
-                rgb_matrix_wls_indicator_set(42, (RGB){RGB_BLUE}, 200, 1);
-            } else {
-                rgb_matrix_wls_indicator_set(42, (RGB){RGB_BLUE}, 500, 1);
-            }
+            rgb_matrix_wls_indicator_set(42, (RGB){RGB_BLUE}, interval, 1);
         } break;
         case DEVS_2G4: {
-            if (reset) {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_2G4, (RGB){HS_LBACK_COLOR_2G4}, 200, 1);
-            } else {
-                rgb_matrix_wls_indicator_set(HS_RGB_BLINK_INDEX_2G4, (RGB){HS_LBACK_COLOR_2G4}, 500, 1);
-            }
+            uint8_t index = find_keycode_led_index(current_layer, KC_2G4, HS_RGB_BLINK_INDEX_2G4);
+            RGB     color = reset ? (RGB){HS_LBACK_COLOR_2G4} : (RGB){HS_PAIR_COLOR_2G4};
+            rgb_matrix_wls_indicator_set(index, color, interval, 1);
         } break;
         default:
             break;
@@ -1311,16 +1372,23 @@ void rgb_matrix_hs_bat(void) {
 void bat_indicators(void) {
     static uint32_t battery_process_time = 0;
 
+    /* Only the half with the wireless module knows the battery level. */
+    if (!is_keyboard_master()) {
+        return;
+    }
+
+    uint8_t bat_led = get_indicator_led_cache()->bat;
+
     if (charging_state && (bat_full_flag)) {
         battery_process_time = 0;
-        if (im_bat_req_charging_flag) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0xFF, 0x00, 0x00);
+        if (im_bat_req_charging_flag) rgb_matrix_set_color(bat_led, 0xFF, 0x00, 0x00);
     } else if (charging_state) {
 
         battery_process_time = 0;
-        if (im_bat_req_charging_flag) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0x00, 0xFF, 0x00);
+        if (im_bat_req_charging_flag) rgb_matrix_set_color(bat_led, 0x00, 0xFF, 0x00);
     } else if (*md_getp_bat() <= BATTERY_CAPACITY_LOW) {
 
-        rgb_matrix_hs_bat_set(HS_MATRIX_BLINK_INDEX_BAT, (RGB){0xFF, 0x00, 0x00}, 250, 1);
+        rgb_matrix_hs_bat_set(bat_led, (RGB){0xFF, 0x00, 0x00}, 250, 1);
 
         if (*md_getp_bat() <= BATTERY_CAPACITY_STOP) {
             if (!battery_process_time) {
@@ -1343,10 +1411,11 @@ void bat_indicators(void) {
 #endif
 
 void rgb_blink_dir(void) {
-    rgb_matrix_hs_indicator_set(54, (RGB){0, 0, 0}, 250, 1);
-    rgb_matrix_hs_indicator_set(66, (RGB){0, 0, 0}, 250, 1);
-    rgb_matrix_hs_indicator_set(67, (RGB){0, 0, 0}, 250, 1);
-    rgb_matrix_hs_indicator_set(65, (RGB){0, 0, 0}, 250, 1);
+    uint8_t current_layer = get_highest_layer(layer_state | default_layer_state);
+    rgb_matrix_hs_indicator_set(find_keycode_led_index(current_layer, RM_VALU, 54), (RGB){0, 0, 0}, 250, 1);
+    rgb_matrix_hs_indicator_set(find_keycode_led_index(current_layer, RM_VALD, 66), (RGB){0, 0, 0}, 250, 1);
+    rgb_matrix_hs_indicator_set(find_keycode_led_index(current_layer, RM_SPDU, 67), (RGB){0, 0, 0}, 250, 1);
+    rgb_matrix_hs_indicator_set(find_keycode_led_index(current_layer, RM_SPDD, 65), (RGB){0, 0, 0}, 250, 1);
 }
 
 bool hs_reset_settings_user(void) {
@@ -1456,11 +1525,13 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
         ee_clr_timer = 0;
     }
 
+    const indicator_led_cache_t *leds = get_indicator_led_cache();
+
     if (host_keyboard_led_state().caps_lock)
-        rgb_matrix_set_color(HS_RGB_INDEX_CAPS, 0x20, 0x20, 0x20);
+        rgb_matrix_set_color(leds->caps, 0x20, 0x20, 0x20);
 
     if (!keymap_is_mac_system() && keymap_config.no_gui)
-        rgb_matrix_set_color(HS_RGB_INDEX_WIN_LOCK, 0x20, 0x20, 0x20);
+        rgb_matrix_set_color(leds->win_lock, 0x20, 0x20, 0x20);
 
 #ifdef RGBLIGHT_ENABLE
     if (rgb_matrix_indicators_advanced_rgblight(led_min, led_max) != true) {
@@ -1488,7 +1559,7 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
 #endif
 
     rgb_matrix_hs_indicator();
-    if (confinfo.filp) rgb_matrix_set_color(32,RGB_MATRIX_MAXIMUM_BRIGHTNESS,RGB_MATRIX_MAXIMUM_BRIGHTNESS,RGB_MATRIX_MAXIMUM_BRIGHTNESS);
+    if (confinfo.filp) rgb_matrix_set_color(leds->filp, RGB_MATRIX_MAXIMUM_BRIGHTNESS, RGB_MATRIX_MAXIMUM_BRIGHTNESS, RGB_MATRIX_MAXIMUM_BRIGHTNESS);
     query();
     return true;
 }
@@ -1506,6 +1577,9 @@ void hs_reset_settings(void) {
         }
     }
     enable_bat_indicators = false;
+#ifdef RGB_MATRIX_ENABLE
+    indicator_led_cache.valid = false;
+#endif
     eeconfig_init();
     eeconfig_update_rgb_matrix_default();
 
@@ -1519,8 +1593,8 @@ void hs_reset_settings(void) {
 
     eeconfig_read_keymap(&keymap_config);
 
-#if defined(NKRO_ENABLE) && defined(FORCE_NKRO)
-    keymap_config.nkro = 0;
+#if defined(NKRO_ENABLE) && defined(NKRO_DEFAULT_ON)
+    keymap_config.nkro = NKRO_DEFAULT_ON;
     eeconfig_update_keymap(&keymap_config);
 #endif
 
