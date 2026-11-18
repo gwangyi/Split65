@@ -111,6 +111,7 @@ bool test_white_light_flag = false;
 HSV start_hsv;
 bool no_record_fg;
 bool lower_sleep = false;
+bool manual_off  = false;
 /* Time of the last mode sync sent to the other half; 0 forces one now. */
 static uint32_t mms_last_sync = 0;
 /* Slave side: time of the last mode sync received from the master. */
@@ -379,6 +380,12 @@ bool lpwr_is_allow_timeout_hook(void) {
      * broken USB connection, so it stays off until that is understood.
      */
     if (wireless_get_current_devs() == DEVS_USB) {
+        if (!post_init_timer && HS_GET_MODE_PIN(HS_USB_PIN_STATE) && !readPin(HS_BAT_CABLE_PIN)) {
+            lower_sleep = true;
+            manual_off  = true;
+            lpwr_set_timeout_manual(true);
+            return true;
+        }
         return false;
     }
 
@@ -1121,6 +1128,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 #ifdef WIRELESS_ENABLE
                 if (wireless_get_current_devs() != DEVS_USB) {
                     lower_sleep = true;
+                    manual_off  = true;
                     lpwr_set_timeout_manual(true);
                 }
 #endif
@@ -1739,6 +1747,7 @@ void lpwr_wakeup_hook(void) {
     hs_split_link_restore();
     hs_radio_parked = false;
     lower_sleep     = false;
+    manual_off      = false;
     mms_last_sync   = 0;
     mms_last_rx     = timer_read32();
 

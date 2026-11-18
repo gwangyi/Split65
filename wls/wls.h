@@ -37,6 +37,7 @@ enum modeio_mode {
 #endif
 
 extern bool lower_sleep;
+extern bool manual_off;
 extern bool hs_radio_parked;
 
 void hs_split_link_park(void);

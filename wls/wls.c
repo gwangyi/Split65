@@ -20,7 +20,7 @@ void usart_init(void);
  */
 void hs_split_link_park(void) {
 #ifdef SPLIT_KEYBOARD
-    if (wireless_get_current_devs() != DEVS_USB) {
+    if (lower_sleep || (wireless_get_current_devs() != DEVS_USB)) {
         setPinInput(SERIAL_USART_RX_PIN);
         setPinInput(SERIAL_USART_TX_PIN);
     }
@@ -287,9 +287,16 @@ void lpwr_stop_hook_post(void) {
             return;
         }
         switch (lpwr_get_sleep_wakeupcd()) {
+            case LPWR_WAKEUP_SWITCH:
+                if (!manual_off) {
+                    lpwr_set_state(LPWR_STOP);
+                    break;
+                }
+                /* fall through */
             case LPWR_WAKEUP_USB:
             case LPWR_WAKEUP_CABLE: {
                 lower_sleep = false;
+                manual_off  = false;
                 lpwr_set_state(LPWR_WAKEUP);
             } break;
             default: {
