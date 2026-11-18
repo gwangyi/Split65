@@ -6,6 +6,7 @@
 #include "usb_device_state.h"
 #include "usb_main.h"
 #include "transport.h"
+#include "lowpower.h"
 
 #ifndef USB_POWER_DOWN_DELAY
 #    define USB_POWER_DOWN_DELAY 7000
@@ -122,7 +123,7 @@ void usb_remote_wakeup(void) {
     }
 #else
 
-    if ((USB_DRIVER.state == USB_SUSPENDED)) {
+    if ((USB_DRIVER.state == USB_SUSPENDED) && (lpwr_get_state() == LPWR_NORMAL)) {
         if (!suspend_timer) suspend_timer = sync_timer_read32();
         if (sync_timer_elapsed32(suspend_timer) >= USB_POWER_DOWN_DELAY) {
             suspend_timer = 0x00;

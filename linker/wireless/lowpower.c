@@ -5,6 +5,13 @@
 #include "wireless.h"
 #include "usb_main.h"
 
+#ifdef SPLIT_KEYBOARD
+#    include "split_util.h"
+#    define LPWR_IS_USB_HALF() is_keyboard_master()
+#else
+#    define LPWR_IS_USB_HALF() true
+#endif
+
 #ifndef LPWR_TIMEOUT
 #    define LPWR_TIMEOUT 300000 // 5min
 #endif
@@ -153,7 +160,8 @@ bool lpwr_is_allow_timeout(void) {
 bool lpwr_is_allow_presleep_hook(void) __attribute__((weak));
 bool lpwr_is_allow_presleep_hook(void) {
     extern bool charging_state;
-    if ((wireless_get_current_devs() == DEVS_USB) && (!charging_state)) {
+    /* Only the half that owns the USB port touches the USB driver. */
+    if (LPWR_IS_USB_HALF() && (wireless_get_current_devs() == DEVS_USB) && (!charging_state)) {
 
         if (USB_DRIVER.state != USB_STOP) {
             usb_power_disconnect();
@@ -201,7 +209,7 @@ bool lpwr_is_allow_stop(void) {
 
 bool lpwr_is_allow_wakeup_hook(void) __attribute__((weak));
 bool lpwr_is_allow_wakeup_hook(void) {
-    if (wireless_get_current_devs() == DEVS_USB && USB_DRIVER.state == USB_STOP)
+    if (LPWR_IS_USB_HALF() && wireless_get_current_devs() == DEVS_USB && USB_DRIVER.state == USB_STOP)
     {
         usb_power_connect();
         restart_usb_driver(&USBD1);
@@ -250,17 +258,33 @@ void lpwr_stop_hook_pre(void) {}
 void lpwr_stop_hook_post(void) __attribute__((weak));
 void lpwr_stop_hook_post(void) {}
 
+/*
+ * Return false to keep the MCU running while "asleep" (lights off only).
+ * The stock firmware does this in USB mode while the cable is connected.
+ */
+bool lpwr_is_allow_enter_stop_hook(void) __attribute__((weak));
+bool lpwr_is_allow_enter_stop_hook(void) {
+    return true;
+}
+
 void lpwr_stop_cb(void) __attribute__((weak));
 void lpwr_stop_cb(void) {
 
     lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_NONE);
 
     lpwr_stop_hook_pre();
-    lpwr_enter_stop();
+    if (lpwr_is_allow_enter_stop_hook()) {
+        lpwr_enter_stop();
+    }
 
+    /*
+     * As in the stock firmware, stay asleep unless a wake-up source was
+     * recorded. The state is left untouched in that case, so a wake-up
+     * requested from elsewhere (key event, split sync) is not lost.
+     */
     switch (lpwr_get_sleep_wakeupcd()) {
+        case LPWR_WAKEUP_NONE:
         case LPWR_WAKEUP_UART: {
-            lpwr_set_state(LPWR_STOP);
         } break;
         default: {
             lpwr_set_state(LPWR_WAKEUP);
@@ -286,6 +310,9 @@ void lpwr_wakeup_cb(void) {
 
     suspend_wakeup_init();
     lpwr_wakeup_hook();
+
+    /* A sleep request raised while asleep must not put us back to sleep. */
+    manual_timeout = false;
 
     last_matrix_activity_trigger();
 }

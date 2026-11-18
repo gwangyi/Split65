@@ -26,7 +26,21 @@ enum modeio_mode {
     hs_wireless
 };
 
+/* Encoder pin armed as a wake-up source on the half that has the encoder. */
+#ifndef HS_ENCODER_WAKE_PIN
+#    define HS_ENCODER_WAKE_PIN           B6
+#endif
+
+/* Time given to the wireless module to act on "radio off" before stop mode. */
+#ifndef HS_RADIO_OFF_DELAY
+#    define HS_RADIO_OFF_DELAY            300
+#endif
+
 extern bool lower_sleep;
+extern bool hs_radio_parked;
+
+void hs_split_link_park(void);
+void hs_split_link_restore(void);
 bool hs_rgb_blink_hook(void);
 bool hs_mode_scan(bool update, uint8_t moude, uint8_t lsat_btdev);
 bool hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev);

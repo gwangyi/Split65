@@ -69,6 +69,13 @@ bool test_white_light_flag = false;
 HSV start_hsv;
 bool no_record_fg;
 bool lower_sleep = false;
+/* Time of the last mode sync sent to the other half; 0 forces one now. */
+static uint32_t mms_last_sync = 0;
+/* Slave side: time of the last mode sync received from the master. */
+#ifndef HS_SLAVE_LINK_TIMEOUT
+#    define HS_SLAVE_LINK_TIMEOUT 5000
+#endif
+static uint32_t mms_last_rx = 0;
 uint8_t pov;
 static bool im_bat_req_charging_flag = false;
 uint8_t buff[]   = {14, 8, 2, 1, 1, 1, 1, 1, 1, 1, 0};
@@ -251,13 +258,70 @@ void suspend_wakeup_init_kb(void) {
     hs_rgb_blink_set_timer(timer_read32());
 }
 
+/* True while the keyboard is asleep or about to be. */
+static bool lpwr_is_sleeping(void) {
+    return (lpwr_get_state() == LPWR_PRESLEEP) || (lpwr_get_state() == LPWR_STOP);
+}
+
+/* Leave normal sleep. The low-battery sleep only ends on cable or USB. */
+static void lpwr_request_wakeup(void) {
+    if (lpwr_is_sleeping() && !lower_sleep) {
+        lpwr_update_timestamp();
+        lpwr_set_state(LPWR_WAKEUP);
+    }
+}
+
+/*
+ * The half without the wireless module follows the master: it sleeps when
+ * told to (command 0xAA), or on its own idle timeout once the master has
+ * gone silent. Its activity timer mirrors the master's, so without this it
+ * would time out by itself while the master is kept awake (active USB) and
+ * then be woken again by every mode sync.
+ */
 bool lpwr_is_allow_timeout_hook(void) {
 
+    if (!is_keyboard_master()) {
+        return lpwr_get_timeout_manual() || (timer_elapsed32(mms_last_rx) > HS_SLAVE_LINK_TIMEOUT);
+    }
+
+    /*
+     * No sleep in USB mode. The stock firmware does sleep there when USB is
+     * not active, but with this code the keyboard came back from it with a
+     * broken USB connection, so it stays off until that is understood.
+     */
     if (wireless_get_current_devs() == DEVS_USB) {
         return false;
     }
 
     return true;
+}
+
+/*
+ * Going to sleep: the half with the wireless module tells the other half to
+ * sleep too, then both halves release the split serial link (stock firmware
+ * behaviour).
+ */
+void lpwr_presleep_hook(void) {
+
+    if (is_keyboard_master()) {
+        master_to_slave_t m2s = {0};
+        slave_to_master_t s2m = {0};
+
+        m2s.cmd = 0xAA;
+        if (!transaction_rpc_exec(USER_SYNC_MMS, sizeof(m2s), &m2s, sizeof(s2m), &s2m)) {
+            dprintf("Slave sleep request failed!\n");
+        }
+    }
+
+    hs_split_link_park();
+}
+
+void wireless_pre_task(void) {
+
+    /* USB mode, asleep with the MCU running: wake up when the host resumes. */
+    if (is_keyboard_master() && (wireless_get_current_devs() == DEVS_USB) && (USB_DRIVER.state == USB_ACTIVE)) {
+        lpwr_request_wakeup();
+    }
 }
 
 void wireless_post_task(void) {
@@ -272,7 +336,14 @@ void wireless_post_task(void) {
         post_init_timer = 0x00;
     }
 #    if defined(HS_BT_DEF_PIN) && defined(HS_2G4_DEF_PIN)
-    hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
+    /*
+     * Only the half with the wireless module has the mode switch. On the
+     * other half the pins read as "USB", which would keep overriding the
+     * mode synced from the master.
+     */
+    if (is_keyboard_master()) {
+        hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
+    }
 #    endif
 }
 
@@ -507,6 +578,11 @@ void im_rgblight_increase(void) {
 uint32_t hs_ct_time;
 RGB rgb_test_open;
 bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+
+#ifdef WIRELESS_ENABLE
+    /* Any key event ends a sleep in which the MCU kept running. */
+    lpwr_request_wakeup();
+#endif
 
     if (process_record_user(keycode, record) != true) {
         return false;
@@ -1131,18 +1207,31 @@ void housekeeping_task_user(void) { // loop
         hs_now_mode = MD_SND_CMD_DEVCTRL_CHARGING_STOP;
     }
 
-    if (!hs_current_time || timer_elapsed32(hs_current_time) > 1000) {
+    /*
+     * Only the half with the wireless module talks to it, and not while
+     * asleep: the stock firmware stops polling the module before sleeping.
+     */
+    if (is_keyboard_master() && (lpwr_get_state() == LPWR_NORMAL)) {
+        if (!hs_current_time || timer_elapsed32(hs_current_time) > 1000) {
 
-        hs_current_time = timer_read32();
-        md_send_devctrl(hs_now_mode);
-        md_send_devctrl(MD_SND_CMD_DEVCTRL_INQVOL);
+            hs_current_time = timer_read32();
+            md_send_devctrl(hs_now_mode);
+            md_send_devctrl(MD_SND_CMD_DEVCTRL_INQVOL);
+        }
     }
 #endif
 
+    /*
+     * The mode sync doubles as the "master is awake" signal for the other
+     * half, so it is only sent while awake.
+     */
+#ifdef WIRELESS_ENABLE
+    if (is_keyboard_master() && (lpwr_get_state() == LPWR_NORMAL)) {
+#else
     if (is_keyboard_master()) {
-        static uint32_t last_sync = 0;
-        if (timer_elapsed32(last_sync) > 2000) {
-            last_sync = timer_read32();
+#endif
+        if (!mms_last_sync || timer_elapsed32(mms_last_sync) > 2000) {
+            mms_last_sync = timer_read32();
 #ifdef WIRELESS_ENABLE
             pov = *md_getp_bat();
             master_sync_mms_slave(wireless_get_current_devs(), wireless_get_current_devs(), pov);
@@ -1310,6 +1399,11 @@ void rgb_matrix_hs_bat(void) {
 
 void bat_indicators(void) {
     static uint32_t battery_process_time = 0;
+
+    /* Only the half with the wireless module knows the battery level. */
+    if (!is_keyboard_master()) {
+        return;
+    }
 
     if (charging_state && (bat_full_flag)) {
         battery_process_time = 0;
@@ -1540,7 +1634,15 @@ void hs_reset_settings(void) {
 
 void lpwr_wakeup_hook(void) {
 #ifdef WIRELESS_ENABLE
-    hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
+    /* The split link may have been released without reaching stop mode. */
+    hs_split_link_restore();
+    hs_radio_parked = false;
+    mms_last_sync   = 0;
+    mms_last_rx     = timer_read32();
+
+    if (is_keyboard_master()) {
+        hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
+    }
 #endif
 
     if (rgb_matrix_get_val() != 0){
@@ -1561,7 +1663,22 @@ void user_sync_mms_slave_handler(uint8_t in_buflen, const void* in_data, uint8_t
     {
         case 0x55:  //sync multimode
 #ifdef WIRELESS_ENABLE
+            /* The master is awake, so this half wakes up as well. */
+            mms_last_rx = timer_read32();
+            lpwr_request_wakeup();
             wireless_devs_change(m2s->body[0], m2s->body[1], false);
+#endif
+            s2m->resp = 0x00;
+        break;
+        case 0xAA:  //sleep together with the master
+#ifdef WIRELESS_ENABLE
+            /*
+             * Release the link right away, as the stock firmware does: the
+             * master arms its RX pin as a wake-up source a moment later and
+             * must not see this half letting go of the line.
+             */
+            hs_split_link_park();
+            lpwr_set_timeout_manual(true);
 #endif
             s2m->resp = 0x00;
         break;

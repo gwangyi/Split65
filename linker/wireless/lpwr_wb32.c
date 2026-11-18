@@ -9,11 +9,32 @@
 #    include "uart.h"
 #endif
 
+#ifdef SPLIT_KEYBOARD
+#    include "split_util.h"
+#endif
+
 /*
  * Removed [MATRIX_ROWS] and [MATRIX_COLS] to fix sleep mode
  */
 static ioline_t row_pins[] = MATRIX_ROW_PINS;
 static ioline_t col_pins[] = MATRIX_COL_PINS;
+
+/*
+ * Each half of a split keyboard arms its own matrix pins as wake-up sources,
+ * as the stock firmware does. Arming the left-hand pins on the right half
+ * leaves its keys unable to wake the MCU.
+ */
+#if defined(SPLIT_KEYBOARD) && defined(MATRIX_ROW_PINS_RIGHT)
+static ioline_t row_pins_right[] = MATRIX_ROW_PINS_RIGHT;
+#else
+#    define row_pins_right row_pins
+#endif
+
+#if defined(SPLIT_KEYBOARD) && defined(MATRIX_COL_PINS_RIGHT)
+static ioline_t col_pins_right[] = MATRIX_COL_PINS_RIGHT;
+#else
+#    define col_pins_right col_pins
+#endif
 
 #if PAL_USE_CALLBACKS != TRUE
 #    error PAL_USE_CALLBACKS must be set to TRUE!
@@ -72,34 +93,50 @@ void lpwr_exti_init(void) {
 
     pal_events_init();
 
+    ioline_t *rows      = row_pins;
+    ioline_t *cols      = col_pins;
+    uint8_t   row_count = ARRAY_SIZE(row_pins);
+    uint8_t   col_count = ARRAY_SIZE(col_pins);
+
+#ifdef SPLIT_KEYBOARD
+    if (!is_keyboard_left()) {
+        rows      = row_pins_right;
+        cols      = col_pins_right;
+        row_count = ARRAY_SIZE(row_pins_right);
+        col_count = ARRAY_SIZE(col_pins_right);
+    }
+#endif
+
+    /* Both edges, as in the stock firmware: a key held while entering stop
+     * mode wakes the MCU when it is released. */
 #if DIODE_DIRECTION == ROW2COL
-    for (uint8_t i = 0; i < ARRAY_SIZE(col_pins); i++) {
-        if (col_pins[i] != NO_PIN) {
-            setPinOutputOpenDrain(col_pins[i]);
-            writePinLow(col_pins[i]);
+    for (uint8_t i = 0; i < col_count; i++) {
+        if (cols[i] != NO_PIN) {
+            setPinOutputOpenDrain(cols[i]);
+            writePinLow(cols[i]);
         }
     }
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(row_pins); i++) {
-        if (row_pins[i] != NO_PIN) {
-            setPinInputHigh(row_pins[i]);
+    for (uint8_t i = 0; i < row_count; i++) {
+        if (rows[i] != NO_PIN) {
+            setPinInputHigh(rows[i]);
             waitInputPinDelay();
-            palEnableLineEvent(row_pins[i], PAL_EVENT_MODE_FALLING_EDGE);
+            palEnableLineEvent(rows[i], PAL_EVENT_MODE_BOTH_EDGES);
         }
     }
 #elif DIODE_DIRECTION == COL2ROW
-    for (uint8_t i = 0; i < ARRAY_SIZE(row_pins); i++) {
-        if (row_pins[i] != NO_PIN) {
-            setPinOutputOpenDrain(row_pins[i]);
-            writePinLow(row_pins[i]);
+    for (uint8_t i = 0; i < row_count; i++) {
+        if (rows[i] != NO_PIN) {
+            setPinOutputOpenDrain(rows[i]);
+            writePinLow(rows[i]);
         }
     }
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(col_pins); i++) {
-        if (col_pins[i] != NO_PIN) {
-            setPinInputHigh(col_pins[i]);
+    for (uint8_t i = 0; i < col_count; i++) {
+        if (cols[i] != NO_PIN) {
+            setPinInputHigh(cols[i]);
             waitInputPinDelay();
-            palEnableLineEvent(col_pins[i], PAL_EVENT_MODE_FALLING_EDGE);
+            palEnableLineEvent(cols[i], PAL_EVENT_MODE_BOTH_EDGES);
         }
     }
 #endif

@@ -10,7 +10,7 @@
  * Ex. HS_SLEEP_TIMEOUT 120000 for 2 minutes
  *
  * Override the default LPWR_TIMEOUT of 5 minutes by defining it here.
- * Ex. LPWR_TIMEOUT 600000 for 10 minutes
+ * Ex. LPWR_TIMEOUT 600000 for 10 minutes. 0 disables the idle timeout.
  */
 #define HS_SLEEP_TIMEOUT 300000 // 5 minutes
 #define LPWR_TIMEOUT 600000 // 10 minutes

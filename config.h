@@ -60,6 +60,9 @@
 #define UART_TX_PAL_MODE                    7
 #define UART_RX_PAL_MODE                    7
 
+/* As in the stock firmware, wireless module traffic does not wake the MCU. */
+#define LPWR_UART_WAKEUP_DISABLE
+
 #define SERIAL_USART_DRIVER SD1
 #define SERIAL_USART_TX_PIN A9
 #define SERIAL_USART_RX_PIN A10

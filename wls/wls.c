@@ -2,6 +2,50 @@
 
 static ioline_t col_pins[MATRIX_COLS] = MATRIX_COL_PINS;
 
+/* The right half uses its own column pins. */
+#if defined(SPLIT_KEYBOARD) && defined(MATRIX_COL_PINS_RIGHT)
+static ioline_t col_pins_right[MATRIX_COLS] = MATRIX_COL_PINS_RIGHT;
+#else
+#    define col_pins_right col_pins
+#endif
+
+/* Set once the wireless module has been told to switch its radio off. */
+bool hs_radio_parked = false;
+
+void usart_init(void);
+
+/*
+ * Before sleeping in a wireless mode the stock firmware releases the split
+ * serial pins on both halves, so neither half drives the link while asleep.
+ */
+void hs_split_link_park(void) {
+#ifdef SPLIT_KEYBOARD
+    if (wireless_get_current_devs() != DEVS_USB) {
+        setPinInput(SERIAL_USART_RX_PIN);
+        setPinInput(SERIAL_USART_TX_PIN);
+    }
+#endif
+}
+
+/* Hand the split serial pins back to the USART. */
+void hs_split_link_restore(void) {
+#ifdef SPLIT_KEYBOARD
+    usart_init();
+#endif
+}
+
+/* Ask the wireless module to switch its radio off and let it do so. */
+static void hs_radio_off(void) {
+    uint32_t timer = timer_read32();
+
+    md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);
+    while (smsg_is_busy() && timer_elapsed32(timer) < 500) {
+        md_main_task();
+    }
+    wait_ms(HS_RADIO_OFF_DELAY);
+    hs_radio_parked = true;
+}
+
 bool hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev) {
     static uint32_t scan_timer = 0x00;
 
@@ -117,31 +161,79 @@ bool hs_rgb_blink_hook() {
 
 void lpwr_exti_init_hook(void) {
 
+    /* Only the half with the wireless module has the mode switch. */
+    if (is_keyboard_master()) {
 #ifdef HS_BT_DEF_PIN
-    setPinInputHigh(HS_BT_DEF_PIN);
-    waitInputPinDelay();
-    palEnableLineEvent(HS_BT_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
+        setPinInputHigh(HS_BT_DEF_PIN);
+        waitInputPinDelay();
+        palEnableLineEvent(HS_BT_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
 
 #ifdef HS_2G4_DEF_PIN
-    setPinInputHigh(HS_2G4_DEF_PIN);
-    waitInputPinDelay();
-    palEnableLineEvent(HS_2G4_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
+        setPinInputHigh(HS_2G4_DEF_PIN);
+        waitInputPinDelay();
+        palEnableLineEvent(HS_2G4_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
+    }
 
     if (lower_sleep) {
 #if DIODE_DIRECTION == ROW2COL
-        for (uint8_t i = 0; i < ARRAY_SIZE(col_pins); i++) {
-            if (col_pins[i] != NO_PIN) {
-                setPinOutput(col_pins[i]);
-                writePinHigh(col_pins[i]);
+        ioline_t *cols = is_keyboard_left() ? col_pins : col_pins_right;
+
+        for (uint8_t i = 0; i < MATRIX_COLS; i++) {
+            if (cols[i] != NO_PIN) {
+                setPinOutput(cols[i]);
+                writePinHigh(cols[i]);
             }
         }
 #endif
+    } else if (!is_keyboard_left()) {
+        /* Turning the knob wakes the keyboard from normal sleep. */
+        setPinInputHigh(HS_ENCODER_WAKE_PIN);
+        waitInputPinDelay();
+        palEnableLineEvent(HS_ENCODER_WAKE_PIN, PAL_EVENT_MODE_BOTH_EDGES);
     }
-    setPinInput(HS_BAT_CABLE_PIN);
+
+    /*
+     * Cable detection only exists on the half with the USB port. On the
+     * other half the pin is not driven and must not be a wake-up source.
+     */
+    if (is_keyboard_master()) {
+        setPinInput(HS_BAT_CABLE_PIN);
+        waitInputPinDelay();
+        palEnableLineEvent(HS_BAT_CABLE_PIN, PAL_EVENT_MODE_RISING_EDGE);
+    }
+
+#ifdef SPLIT_KEYBOARD
+    /*
+     * The halves wake each other through the split serial link: the half
+     * that wakes first drives its TX pin again, which the other half sees
+     * as an edge on RX. Same configuration as the stock firmware.
+     */
+    setPinInput(SERIAL_USART_RX_PIN);
     waitInputPinDelay();
-    palEnableLineEvent(HS_BAT_CABLE_PIN, PAL_EVENT_MODE_RISING_EDGE);
+    palEnableLineEvent(SERIAL_USART_RX_PIN, PAL_EVENT_MODE_BOTH_EDGES);
+#endif
+}
+
+/* Runs right after stop mode, once the clocks are back. */
+void lpwr_clock_enable_user(void) {
+    hs_split_link_restore();
+}
+
+/*
+ * In USB mode the MCU keeps running while asleep (lights off only) on the
+ * half without the USB port, and on the other half while the cable is in.
+ */
+bool lpwr_is_allow_enter_stop_hook(void) {
+
+    if (!lower_sleep && (wireless_get_current_devs() == DEVS_USB)) {
+        if (!is_keyboard_master() || readPin(HS_BAT_CABLE_PIN)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void palcallback_cb(uint8_t line) {
@@ -169,12 +261,20 @@ void palcallback_cb(uint8_t line) {
 void lpwr_stop_hook_pre(void) {
 
     gpio_write_pin_low(LED_POWER_EN_PIN);
-    gpio_write_pin_low(A9);
- 
+    gpio_write_pin_low(LED_POWER_EN2_PIN);
+
+    /*
+     * Radio off before stop mode, once per sleep: always for the low-battery
+     * sleep, otherwise only when there is no host connection to keep alive.
+     * A connected module is left to its own sleep handling.
+     */
+    if (is_keyboard_master() && !hs_radio_parked && (wireless_get_current_devs() != DEVS_USB)) {
+        if (lower_sleep || (*md_getp_state() != MD_STATE_CONNECTED)) {
+            hs_radio_off();
+        }
+    }
 
     if (lower_sleep) {
-        md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);
-        wait_ms(200);
         lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_UART);
     }
 }
