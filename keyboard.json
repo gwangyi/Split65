@@ -223,10 +223,14 @@
         }
     },
     "tap_keycode_delay": 10,
-    "url": "",
+    "url": "https://github.com/gwangyi/Split65",
+    "host": {
+        "default": {
+            "nkro": true
+        }
+    },
     "usb": {
         "device_version": "0.3.0",
-        "force_nkro": true,
         "pid": "0xE4C6",
         "suspend_wakeup_delay": 1000,
         "vid": "0x342D"
