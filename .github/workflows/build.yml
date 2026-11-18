@@ -1,0 +1,105 @@
+name: Build Split65 with QMK
+
+on:
+  workflow_dispatch:
+    inputs:
+      qmk_ref:
+        description: "QMK tag/branch to build against"
+        required: false
+        default: "master"
+        type: string
+  schedule:
+    # Compatibility check against qmk/qmk_firmware master on the 1st and 15th of every month.
+    - cron: "0 3 1,15 * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.keymap }})
+    runs-on: ubuntu-latest
+    container: ghcr.io/qmk/qmk_cli
+    strategy:
+      fail-fast: false
+      matrix:
+        keymap: [via, default]
+
+    steps:
+      - name: Disable safe.directory check
+        run: git config --global --add safe.directory '*'
+
+      - name: Checkout Split65
+        uses: actions/checkout@v4
+        with:
+          path: split65
+
+      - name: Checkout qmk/qmk_firmware (${{ inputs.qmk_ref || 'master' }})
+        uses: actions/checkout@v4
+        with:
+          repository: qmk/qmk_firmware
+          ref: ${{ inputs.qmk_ref || 'master' }}
+          path: qmk_firmware
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Link Split65 into qmk_firmware
+        run: ln -sfn "$GITHUB_WORKSPACE/split65" "$GITHUB_WORKSPACE/qmk_firmware/keyboards/epomaker/split65"
+
+      - name: Compile firmware
+        env:
+          QMK_HOME: ${{ github.workspace }}/qmk_firmware
+        run: |
+          set -o pipefail
+          qmk compile -j "$(nproc)" -kb epomaker/split65 -km "${{ matrix.keymap }}" 2>&1 | tee compile.log
+
+      - name: Write job summary on failure
+        if: failure()
+        run: |
+          {
+            echo "### Build failed (\`${{ matrix.keymap }}\` against \`${{ inputs.qmk_ref || 'master' }}\`)"
+            echo ""
+            echo '```text'
+            tail -n 100 compile.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  report_failure:
+    name: Open issue on failure
+    needs: build
+    if: failure()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create issue if not already open
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const qmkRef = '${{ inputs.qmk_ref || 'master' }}';
+            const title = `QMK ${qmkRef} compatibility check failed`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            if (issues.some((issue) => issue.title === title)) {
+              core.info(`Open issue already exists for "${title}"; skipping creation.`);
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body: [
+                `The QMK compatibility build against \`${qmkRef}\` failed.`,
+                '',
+                `- **Workflow run & error summary:** ${runUrl}`,
+                `- **Trigger:** \`${context.eventName}\``,
+              ].join('\n'),
+            });
