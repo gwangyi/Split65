@@ -120,7 +120,8 @@
     {"name": "RL_MOD","title": "RL_MOD","shortName": "RL_MOD"},
     {"name": "Batt Lvl", "title": "Battery Level", "shortName": "BatLv"},
     {"name": "Fn Flip", "title": "Swap F-row and Num-row", "shortName": "FnFlp"},
-    {"name": "Batt Ind", "title": "Battery Indicator", "shortName": "BatInd"}
+    {"name": "Batt Ind", "title": "Battery Indicator", "shortName": "BatInd"},
+    {"name": "Power Off", "title": "Manual Power Off / Deep Sleep", "shortName": "PwrOff"}
   ],
   "layouts": {
       "keymap":

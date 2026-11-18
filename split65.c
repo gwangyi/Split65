@@ -396,7 +396,8 @@ void lpwr_presleep_hook(void) {
         master_to_slave_t m2s = {0};
         slave_to_master_t s2m = {0};
 
-        m2s.cmd = 0xAA;
+        m2s.cmd     = 0xAA;
+        m2s.body[0] = lower_sleep ? 1 : 0;
         if (!transaction_rpc_exec(USER_SYNC_MMS, sizeof(m2s), &m2s, sizeof(s2m), &s2m)) {
             dprintf("Slave sleep request failed!\n");
         }
@@ -1115,6 +1116,17 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
             }
             return false;
         } break;
+        case HS_OFF: {
+            if (record->event.pressed) {
+#ifdef WIRELESS_ENABLE
+                if (wireless_get_current_devs() != DEVS_USB) {
+                    lower_sleep = true;
+                    lpwr_set_timeout_manual(true);
+                }
+#endif
+            }
+            return false;
+        } break;
         case KC_BATQ:{
             if (record->event.pressed) {
 
@@ -1726,6 +1738,7 @@ void lpwr_wakeup_hook(void) {
     /* The split link may have been released without reaching stop mode. */
     hs_split_link_restore();
     hs_radio_parked = false;
+    lower_sleep     = false;
     mms_last_sync   = 0;
     mms_last_rx     = timer_read32();
 
@@ -1767,6 +1780,7 @@ void user_sync_mms_slave_handler(uint8_t in_buflen, const void* in_data, uint8_t
              * must not see this half letting go of the line.
              */
             hs_split_link_park();
+            lower_sleep = (m2s->body[0] != 0);
             lpwr_set_timeout_manual(true);
 #endif
             s2m->resp = 0x00;

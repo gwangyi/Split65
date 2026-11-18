@@ -281,6 +281,11 @@ void lpwr_stop_hook_pre(void) {
 
 void lpwr_stop_hook_post(void) {
     if (lower_sleep) {
+        if (!is_keyboard_master() && (lpwr_get_sleep_wakeupcd() != LPWR_WAKEUP_NONE)) {
+            lower_sleep = false;
+            lpwr_set_state(LPWR_WAKEUP);
+            return;
+        }
         switch (lpwr_get_sleep_wakeupcd()) {
             case LPWR_WAKEUP_USB:
             case LPWR_WAKEUP_CABLE: {

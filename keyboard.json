@@ -54,6 +54,9 @@
         },
         {
             "key": "KC_BATQ"
+        },
+        {
+            "key": "HS_OFF"
         }
     ],
     "processor": "WB32FQ95",
