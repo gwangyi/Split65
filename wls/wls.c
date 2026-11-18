@@ -21,8 +21,8 @@ void usart_init(void);
 void hs_split_link_park(void) {
 #ifdef SPLIT_KEYBOARD
     if (lower_sleep || (wireless_get_current_devs() != DEVS_USB)) {
-        setPinInput(SERIAL_USART_RX_PIN);
-        setPinInput(SERIAL_USART_TX_PIN);
+        gpio_set_pin_input(SERIAL_USART_RX_PIN);
+        gpio_set_pin_input(SERIAL_USART_TX_PIN);
     }
 #endif
 }
@@ -164,13 +164,13 @@ void lpwr_exti_init_hook(void) {
     /* Only the half with the wireless module has the mode switch. */
     if (is_keyboard_master()) {
 #ifdef HS_BT_DEF_PIN
-        setPinInputHigh(HS_BT_DEF_PIN);
+        gpio_set_pin_input_high(HS_BT_DEF_PIN);
         waitInputPinDelay();
         palEnableLineEvent(HS_BT_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
 
 #ifdef HS_2G4_DEF_PIN
-        setPinInputHigh(HS_2G4_DEF_PIN);
+        gpio_set_pin_input_high(HS_2G4_DEF_PIN);
         waitInputPinDelay();
         palEnableLineEvent(HS_2G4_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
@@ -182,14 +182,14 @@ void lpwr_exti_init_hook(void) {
 
         for (uint8_t i = 0; i < MATRIX_COLS; i++) {
             if (cols[i] != NO_PIN) {
-                setPinOutput(cols[i]);
-                writePinHigh(cols[i]);
+                gpio_set_pin_output(cols[i]);
+                gpio_write_pin_high(cols[i]);
             }
         }
 #endif
     } else if (!is_keyboard_left()) {
         /* Turning the knob wakes the keyboard from normal sleep. */
-        setPinInputHigh(HS_ENCODER_WAKE_PIN);
+        gpio_set_pin_input_high(HS_ENCODER_WAKE_PIN);
         waitInputPinDelay();
         palEnableLineEvent(HS_ENCODER_WAKE_PIN, PAL_EVENT_MODE_BOTH_EDGES);
     }
@@ -199,7 +199,7 @@ void lpwr_exti_init_hook(void) {
      * other half the pin is not driven and must not be a wake-up source.
      */
     if (is_keyboard_master()) {
-        setPinInput(HS_BAT_CABLE_PIN);
+        gpio_set_pin_input(HS_BAT_CABLE_PIN);
         waitInputPinDelay();
         palEnableLineEvent(HS_BAT_CABLE_PIN, PAL_EVENT_MODE_RISING_EDGE);
     }
@@ -210,7 +210,7 @@ void lpwr_exti_init_hook(void) {
      * that wakes first drives its TX pin again, which the other half sees
      * as an edge on RX. Same configuration as the stock firmware.
      */
-    setPinInput(SERIAL_USART_RX_PIN);
+    gpio_set_pin_input(SERIAL_USART_RX_PIN);
     waitInputPinDelay();
     palEnableLineEvent(SERIAL_USART_RX_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
@@ -228,7 +228,7 @@ void lpwr_clock_enable_user(void) {
 bool lpwr_is_allow_enter_stop_hook(void) {
 
     if (!lower_sleep && (wireless_get_current_devs() == DEVS_USB)) {
-        if (!is_keyboard_master() || readPin(HS_BAT_CABLE_PIN)) {
+        if (!is_keyboard_master() || gpio_read_pin(HS_BAT_CABLE_PIN)) {
             return false;
         }
     }

@@ -112,14 +112,14 @@ void lpwr_exti_init(void) {
 #if DIODE_DIRECTION == ROW2COL
     for (uint8_t i = 0; i < col_count; i++) {
         if (cols[i] != NO_PIN) {
-            setPinOutputOpenDrain(cols[i]);
-            writePinLow(cols[i]);
+            gpio_set_pin_output_open_drain(cols[i]);
+            gpio_write_pin_low(cols[i]);
         }
     }
 
     for (uint8_t i = 0; i < row_count; i++) {
         if (rows[i] != NO_PIN) {
-            setPinInputHigh(rows[i]);
+            gpio_set_pin_input_high(rows[i]);
             waitInputPinDelay();
             palEnableLineEvent(rows[i], PAL_EVENT_MODE_BOTH_EDGES);
         }
@@ -127,14 +127,14 @@ void lpwr_exti_init(void) {
 #elif DIODE_DIRECTION == COL2ROW
     for (uint8_t i = 0; i < row_count; i++) {
         if (rows[i] != NO_PIN) {
-            setPinOutputOpenDrain(rows[i]);
-            writePinLow(rows[i]);
+            gpio_set_pin_output_open_drain(rows[i]);
+            gpio_write_pin_low(rows[i]);
         }
     }
 
     for (uint8_t i = 0; i < col_count; i++) {
         if (cols[i] != NO_PIN) {
-            setPinInputHigh(cols[i]);
+            gpio_set_pin_input_high(cols[i]);
             waitInputPinDelay();
             palEnableLineEvent(cols[i], PAL_EVENT_MODE_BOTH_EDGES);
         }
@@ -142,7 +142,7 @@ void lpwr_exti_init(void) {
 #endif
 
 #ifndef LPWR_UART_WAKEUP_DISABLE
-    setPinInput(UART_RX_PIN);
+    gpio_set_pin_input(UART_RX_PIN);
     waitInputPinDelay();
     palEnableLineEvent(UART_RX_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
