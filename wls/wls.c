@@ -144,15 +144,15 @@ bool hs_rgb_blink_hook() {
                     lpwr_set_timeout_manual(true);
                 }
             }
-        case MD_STATE_CONNECTED:
+        case MD_STATE_CONNECTED: {
+            uint32_t sleep_timeout = lpwr_timeout_value_read();
             if (hs_rgb_blink_get_timer() == 0x00) {
                 hs_rgb_blink_set_timer(timer_read32());
-            } else {
-                if (timer_elapsed32(hs_rgb_blink_get_timer()) >= HS_SLEEP_TIMEOUT) {
-                    hs_rgb_blink_set_timer(timer_read32());
-                    lpwr_set_timeout_manual(true);
-                }
+            } else if (sleep_timeout && (timer_elapsed32(hs_rgb_blink_get_timer()) >= sleep_timeout)) {
+                hs_rgb_blink_set_timer(timer_read32());
+                lpwr_set_timeout_manual(true);
             }
+        } break;
         default:
             break;
     }

@@ -23,9 +23,51 @@ typedef union {
         uint8_t last_btdevs : 3;
         uint8_t dir_flag : 1;
         uint8_t filp : 1;
+        uint8_t sleep_timer : 3;
     };
 } confinfo_t;
 confinfo_t confinfo;
+
+enum sleep_timer_option {
+    SLEEP_TIMER_UNSET   = 0,
+    SLEEP_TIMER_1MIN    = 1,
+    SLEEP_TIMER_3MIN    = 2,
+    SLEEP_TIMER_5MIN    = 3,
+    SLEEP_TIMER_10MIN   = 4,
+    SLEEP_TIMER_20MIN   = 5,
+    SLEEP_TIMER_30MIN   = 6,
+    SLEEP_TIMER_OFF     = 7,
+    SLEEP_TIMER_DEFAULT = SLEEP_TIMER_5MIN,
+};
+
+static uint32_t sleep_timer_to_ms(uint8_t option) {
+    switch (option) {
+        case SLEEP_TIMER_1MIN:
+            return 1UL * 60000UL;
+        case SLEEP_TIMER_3MIN:
+            return 3UL * 60000UL;
+        case SLEEP_TIMER_5MIN:
+            return 5UL * 60000UL;
+        case SLEEP_TIMER_10MIN:
+            return 10UL * 60000UL;
+        case SLEEP_TIMER_20MIN:
+            return 20UL * 60000UL;
+        case SLEEP_TIMER_30MIN:
+            return 30UL * 60000UL;
+        case SLEEP_TIMER_OFF:
+            return 0;
+        default:
+            return 5UL * 60000UL;
+    }
+}
+
+static void apply_sleep_timer(uint8_t option) {
+#ifdef WIRELESS_ENABLE
+    lpwr_set_timeout_value(sleep_timer_to_ms(option));
+#else
+    (void)option;
+#endif
+}
 
 typedef struct {
     bool active;
@@ -114,6 +156,7 @@ void eeconfig_confinfo_default(void) {
     confinfo.record_last_mode = 0xff;
     confinfo.last_btdevs      = 1;
     confinfo.dir_flag         = 0;
+    confinfo.sleep_timer      = SLEEP_TIMER_DEFAULT;
 
     // #ifdef WIRELESS_ENABLE
     //     confinfo.devs = DEVS_USB;
@@ -148,8 +191,54 @@ void eeconfig_confinfo_init(void) {
     confinfo.raw = eeconfig_confinfo_read();
     if (!confinfo.raw) {
         eeconfig_confinfo_default();
+    } else if (confinfo.sleep_timer == SLEEP_TIMER_UNSET || confinfo.sleep_timer > SLEEP_TIMER_OFF) {
+        confinfo.sleep_timer = SLEEP_TIMER_DEFAULT;
+        eeconfig_confinfo_update(confinfo.raw);
+    }
+    apply_sleep_timer(confinfo.sleep_timer);
+}
+
+#ifdef VIA_ENABLE
+enum via_custom_sleep_value {
+    id_sleep_timer = 1,
+};
+
+void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+    // data = [ command_id, channel_id, value_id, value_data ]
+    uint8_t *command_id        = &(data[0]);
+    uint8_t *channel_id        = &(data[1]);
+    uint8_t *value_id_and_data = &(data[2]);
+
+    if (*channel_id != id_custom_channel) {
+        *command_id = id_unhandled;
+        return;
+    }
+
+    switch (*command_id) {
+        case id_custom_set_value: {
+            if (value_id_and_data[0] == id_sleep_timer && value_id_and_data[1] >= SLEEP_TIMER_1MIN && value_id_and_data[1] <= SLEEP_TIMER_OFF) {
+                confinfo.sleep_timer = value_id_and_data[1];
+                apply_sleep_timer(confinfo.sleep_timer);
+            }
+            break;
+        }
+        case id_custom_get_value: {
+            if (value_id_and_data[0] == id_sleep_timer) {
+                value_id_and_data[1] = confinfo.sleep_timer;
+            }
+            break;
+        }
+        case id_custom_save: {
+            eeconfig_confinfo_update(confinfo.raw);
+            break;
+        }
+        default: {
+            *command_id = id_unhandled;
+            break;
+        }
     }
 }
+#endif
 
 void keyboard_post_init_kb(void) {
 

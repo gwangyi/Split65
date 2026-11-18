@@ -28,6 +28,7 @@ typedef enum {
 lpwr_state_t lpwr_get_state(void);
 lpwr_mode_t lpwr_get_mode(void);
 uint32_t lpwr_timestamp_read(void);
+void lpwr_set_timeout_value(uint32_t timeout);
 uint32_t lpwr_timeout_value_read(void);
 void lpwr_set_sleep_wakeupcd(lpwr_wakeupcd_t wakeupcd);
 lpwr_wakeupcd_t lpwr_get_sleep_wakeupcd(void);
