@@ -58,6 +58,41 @@ void rgb_matrix_hs_set_remain_time(uint8_t index, uint8_t remain_time);
 #define keymap_is_mac_system() ((get_highest_layer(default_layer_state) == _MBL) || (get_highest_layer(default_layer_state) == _MFL))
 #define keymap_is_base_layer() ((get_highest_layer(default_layer_state) == _BL) || (get_highest_layer(default_layer_state) == _FL))
 
+#define SLOT_LAYERS_EECONFIG_OFFSET (CONFINFO_EECONFIG_OFFSET + 4 + 16)
+#define SLOT_LAYERS_VALID_MASK      0x80U
+
+static uint8_t slot_layers = 0;
+
+static uint8_t get_slot_layer(uint8_t dev) {
+    if (dev >= 7) {
+        return _BL;
+    }
+    return ((slot_layers >> dev) & 0x01U) ? _MBL : _BL;
+}
+
+static void set_slot_layer(uint8_t dev, uint8_t layer) {
+    if (dev >= 7) {
+        return;
+    }
+    uint8_t mask     = (uint8_t)(1U << dev);
+    uint8_t next_val = (layer == _MBL) ? (slot_layers | mask) : (slot_layers & ~mask);
+    next_val |= SLOT_LAYERS_VALID_MASK;
+    if (next_val != slot_layers) {
+        slot_layers = next_val;
+        eeconfig_update_user_datablock(&slot_layers, SLOT_LAYERS_EECONFIG_OFFSET, sizeof(slot_layers));
+    }
+}
+
+static void apply_slot_layer(uint8_t dev) {
+    if (!is_keyboard_master() || dev >= 7) {
+        return;
+    }
+    uint8_t target_layer = get_slot_layer(dev);
+    if (get_highest_layer(default_layer_state) != target_layer) {
+        default_layer_set((layer_state_t)1 << target_layer);
+    }
+}
+
 #ifdef RGB_MATRIX_ENABLE
 /*
  * Find the RGB Matrix LED index for the key mapped to target_keycode,
@@ -178,6 +213,8 @@ void eeconfig_confinfo_default(void) {
 
     eeconfig_init_user_datablock();
     eeconfig_confinfo_update(confinfo.raw);
+    slot_layers = SLOT_LAYERS_VALID_MASK;
+    eeconfig_update_user_datablock(&slot_layers, SLOT_LAYERS_EECONFIG_OFFSET, sizeof(slot_layers));
 
 #ifdef RGBLIGHT_ENABLE
     rgblight_mode(buff[0]);
@@ -1113,6 +1150,11 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
                     set_single_persistent_default_layer(_BL);
                     layer_move(0);
                 }
+#ifdef WIRELESS_ENABLE
+                set_slot_layer(wireless_get_current_devs(), _BL);
+#else
+                set_slot_layer(confinfo.devs, _BL);
+#endif
             }
 
             return false;
@@ -1130,6 +1172,11 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
                     set_single_persistent_default_layer(_MBL);
                     layer_move(0);
                 }
+#ifdef WIRELESS_ENABLE
+                set_slot_layer(wireless_get_current_devs(), _MBL);
+#else
+                set_slot_layer(confinfo.devs, _MBL);
+#endif
             }
 
             return false;
@@ -1254,6 +1301,8 @@ void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) {
         if (confinfo.devs > 0 && confinfo.devs < 4) confinfo.last_btdevs = confinfo.devs;
         eeconfig_confinfo_update(confinfo.raw);
     }
+
+    apply_slot_layer(new_devs);
 
     uint8_t  current_layer = get_highest_layer(layer_state | default_layer_state);
     uint32_t interval      = reset ? 200 : 500;
